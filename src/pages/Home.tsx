@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, Ruler, ShieldCheck, Wallet, Hammer, Play, Volume2, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { GoogleGenAI, Modality } from "@google/genai";
 
 export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -13,23 +12,18 @@ export default function Home() {
 
     setIsLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = "Здравейте и добре дошли в AquaSelf. Ние сме вашият нов партньор за модерна и достъпна облицовка на басейни. Нашата мисия е да направим лукса на идеално облицования басейн достъпен за всеки. Предлагаме висококачествена армирана PVC мембрана, която е три пъти по-евтина от традиционните плочки и е проектирана за лесен монтаж тип 'направи си сам'. На нашия сайт можете да разгледате нашите продукти, да прочетете историята ни и да научите всичко за доставката и поддръжката. Спестете време и пари с AquaSelf.";
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-tts-preview",
-        contents: [{ parts: [{ text: `Кажи на български с мъжки глас, свободно и естествено: ${prompt}` }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Fenrir' }, // Fenrir is often used for deeper tones
-            },
-          },
-        },
+      const res = await fetch("/api/generate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
       });
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!res.ok) throw new Error("Failed to fetch audio");
+      
+      const { audio: base64Audio } = await res.json();
+      
       if (base64Audio) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         const arrayBuffer = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0)).buffer;
