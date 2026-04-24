@@ -26,19 +26,18 @@ async function startServer() {
         return res.status(500).json({ error: "GEMINI_API_KEY is not set" });
       }
 
-      const ai = new GoogleGenAI(apiKey);
-      // Using gemini-2.0-flash or similar modern model for TTS
-      const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const ai = new GoogleGenAI({ apiKey }) as any;
+      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const response = await model.generateContent({
-        contents: [{ parts: [{ text: `Кажи на български с мъжки глас, свободно и естествено: ${prompt}` }] }],
+        contents: [{ parts: [{ text: `Ти си професионален български радио говорител. Твоят глас е дълбок, мъжествен и вдъхва доверие. Прочети следния рекламен текст за AquaSelf на отличен български език, плавно и с правилна интонация: ${prompt}` }] }],
         generationConfig: {
-          responseModalities: ["audio"],
+          responseModalities: ["audio" as any],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Puck' }, // Puck is usually a male voice in Gemini TTS
+              prebuiltVoiceConfig: { voiceName: 'Fenrir' }, // Deep male voice
             },
-          },
+          } as any,
         },
       });
 

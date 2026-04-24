@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowRight, CheckCircle2, Ruler, ShieldCheck, Wallet, Hammer, Play, Volume2, Loader2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Ruler, ShieldCheck, Wallet, Hammer, Play, Volume2, Loader2, Mic2, MicOff, Pause } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
   const playIntro = async () => {
-    if (isPlaying || isLoading) return;
+    if (isLoading || isPlaying) return;
 
     setIsLoading(true);
     try {
-      const prompt = "Здравейте и добре дошли в AquaSelf. Ние сме вашият нов партньор за модерна и достъпна облицовка на басейни. Нашата мисия е да направим лукса на идеално облицования басейн достъпен за всеки. Предлагаме висококачествена армирана PVC мембрана, която е три пъти по-евтина от традиционните плочки и е проектирана за лесен монтаж тип 'направи си сам'. На нашия сайт можете да разгледате нашите продукти, да прочетете историята ни и да научите всичко за доставката и поддръжката. Спестете време и пари с AquaSelf.";
+      const prompt = "Здравейте и добре дошли в AquaSelf! Аз съм вашият виртуален гид. AquaSelf е лидер в модерните и достъпни решения за вашия басейн. Ние предлагаме иновативна армирана PVC облицовка, която е три пъти по-изгодна от традиционните плочки и се монтира изключително лесно. Нашата мисия е да ви спестим време и пари, като същевременно осигурим перфектна хидроизолация и стилен дизайн. С AquaSelf вашият мечтан басейн е само на една крачка. Разгледайте продуктите ни и нека заедно преобразим вашия двор!";
       
       const res = await fetch("/api/generate-audio", {
         method: "POST",
@@ -26,9 +29,13 @@ export default function Home() {
       
       if (base64Audio) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        const arrayBuffer = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0)).buffer;
+        audioContextRef.current = audioContext;
         
-        // The data is raw PCM 16-bit little endian
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+
+        const arrayBuffer = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0)).buffer;
         const int16Array = new Int16Array(arrayBuffer);
         const float32Array = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) {
@@ -41,45 +48,67 @@ export default function Home() {
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(audioContext.destination);
+        sourceNodeRef.current = source;
         
         setIsPlaying(true);
-        source.start();
-        source.onended = () => setIsPlaying(false);
+        setIsLoading(false);
+        source.start(0);
+        source.onended = () => {
+          setIsPlaying(false);
+          audioContextRef.current = null;
+          sourceNodeRef.current = null;
+        };
       }
     } catch (error) {
       console.error("Audio intro error:", error);
-    } finally {
       setIsLoading(false);
+      setIsPlaying(false);
     }
   };
 
+  const stopIntro = () => {
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.stop();
+      } catch (e) {
+        // Already stopped
+      }
+      setIsPlaying(false);
+      audioContextRef.current = null;
+      sourceNodeRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    // Attempt auto-play on first interaction (required by browsers)
+    const handleFirstInteraction = () => {
+      if (!isPlaying && !isLoading) {
+        playIntro();
+      }
+      window.removeEventListener('mousedown', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+      window.removeEventListener('scroll', handleFirstInteraction);
+    };
+
+    window.addEventListener('mousedown', handleFirstInteraction);
+    window.addEventListener('keydown', handleFirstInteraction);
+    window.addEventListener('scroll', handleFirstInteraction);
+
+    return () => {
+      window.removeEventListener('mousedown', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+      window.removeEventListener('scroll', handleFirstInteraction);
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
+    };
+  }, [isPlaying, isLoading]);
+
   return (
     <div className="overflow-hidden">
-      {/* Play Audio Intro Button */}
-      <div className="fixed top-24 left-6 z-40">
-        <button
-          onClick={playIntro}
-          disabled={isLoading}
-          className="group flex items-center space-x-3 bg-white/80 backdrop-blur-md border border-slate-200 p-2 pr-6 rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-50"
-        >
-          <div className="w-10 h-10 bg-sky-600 rounded-full flex items-center justify-center text-white shadow-inner">
-            {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : isPlaying ? (
-              <Volume2 className="w-5 h-5" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-1" />
-            )}
-          </div>
-          <div className="text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-sky-600 transition-colors">Play</p>
-            <p className="text-xs font-bold text-slate-900">Audio Intro</p>
-          </div>
-        </button>
-      </div>
-
       {/* Hero Section */}
-      <section className="relative min-h-[85vh] flex items-center bg-white border-b border-slate-200">
+      <section 
+        className="relative min-h-[85vh] flex items-center bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             {/* Left Content */}
@@ -165,7 +194,8 @@ export default function Home() {
       </section>
 
       {/* Benefits - Why Liner? */}
-      <section className="py-24 bg-slate-50">
+      <section 
+        className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-20">
             <h2 className="text-xs font-black text-sky-600 uppercase tracking-[0.3em] mb-4">Ефективност & Баланс</h2>
@@ -216,7 +246,8 @@ export default function Home() {
       </section>
 
       {/* Comparison Detail */}
-      <section className="py-24 bg-slate-900 text-white overflow-hidden relative">
+      <section 
+        className="py-24 bg-slate-900 text-white overflow-hidden relative">
         <div className="absolute top-0 right-0 w-1/2 h-full opacity-10">
            <Waves className="w-full h-full stroke-[0.1]" />
         </div>
@@ -279,7 +310,8 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-slate-50">
+      <section 
+        className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="bg-sky-600 rounded-[3rem] p-12 md:p-20 text-center text-white shadow-2xl shadow-sky-500/20 relative overflow-hidden">
               <div className="relative z-10">
